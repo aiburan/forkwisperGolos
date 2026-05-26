@@ -243,6 +243,7 @@ pub struct Config {
     pub sound_notification: bool,
     pub mouse_hotkey: MouseHotkey,
     pub consume_mouse_hotkey: bool,
+    pub auto_paste_after_transcribe: bool,
 }
 
 impl Config {
@@ -304,6 +305,11 @@ impl Config {
             .map(|v| parse_bool(&v))
             .unwrap_or(true);
 
+        let auto_paste_after_transcribe =
+            env_any(&["AUTO_PASTE_AFTER_TRANSCRIBE", "auto_paste_after_transcribe"])
+                .map(|v| parse_auto_paste(&v))
+                .unwrap_or(default_auto_paste_after_transcribe());
+
         Self {
             transcription_service,
             api_base_url,
@@ -314,6 +320,7 @@ impl Config {
             sound_notification,
             mouse_hotkey,
             consume_mouse_hotkey,
+            auto_paste_after_transcribe,
         }
     }
 }
@@ -327,4 +334,16 @@ fn parse_bool(value: &str) -> bool {
         || value.eq_ignore_ascii_case("yes")
         || value.eq_ignore_ascii_case("on")
         || value == "1"
+}
+
+pub fn parse_auto_paste(value: &str) -> bool {
+    let value = value.trim();
+    !(value.eq_ignore_ascii_case("false")
+        || value.eq_ignore_ascii_case("off")
+        || value.eq_ignore_ascii_case("no")
+        || value == "0")
+}
+
+fn default_auto_paste_after_transcribe() -> bool {
+    cfg!(target_os = "windows")
 }

@@ -106,6 +106,7 @@ mod windows_mouse_hook {
     static HOOK_CONFIG: OnceLock<HookConfig> = OnceLock::new();
     static HOOK_SENDER: OnceLock<Mutex<Sender<MouseHotkeyEvent>>> = OnceLock::new();
 
+    #[link(name = "user32")]
     unsafe extern "system" {
         fn SetWindowsHookExW(
             id_hook: i32,

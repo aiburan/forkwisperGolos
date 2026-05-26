@@ -179,6 +179,7 @@ struct RuntimeState {
     tts_engine: Option<Arc<PiperTts>>,
     tts_downloading: bool,
     tts_stop: Arc<std::sync::atomic::AtomicBool>,
+    auto_paste_target: Option<crate::auto_paste::PasteTarget>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -248,11 +249,18 @@ fn toggle_recording(
                 return;
             }
 
+            let auto_paste_target = if config.auto_paste_after_transcribe {
+                crate::auto_paste::capture_foreground_window()
+            } else {
+                None
+            };
+
             if let Err(e) = recorder.borrow_mut().start() {
                 eprintln!("Record start error: {e}");
                 show_status(status, &format!("Err: {e}"));
                 return;
             }
+            runtime.borrow_mut().auto_paste_target = auto_paste_target;
             *state.borrow_mut() = State::Recording;
             button.add_css_class("recording");
             button.remove_css_class("done");
@@ -279,6 +287,7 @@ fn toggle_recording(
 
             let db_inner = Arc::clone(db);
             let sample_rate = recorder.borrow().sample_rate();
+            let auto_paste_target = runtime.borrow_mut().auto_paste_target.take();
 
             let (tx, rx) = std::sync::mpsc::channel::<Result<String, String>>();
 
@@ -313,6 +322,7 @@ fn toggle_recording(
             let st2 = status.clone();
             let state_c2 = Rc::clone(state);
             let notify = config.sound_notification;
+            let auto_paste_enabled = config.auto_paste_after_transcribe;
             glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
                 match rx.try_recv() {
                     Ok(Ok(text)) => {
@@ -323,6 +333,17 @@ fn toggle_recording(
                         }
                         match crate::input::copy_to_clipboard(&text) {
                             Ok(_) => {
+                                if auto_paste_enabled {
+                                    if let Some(target) = auto_paste_target {
+                                        if let Err(e) = crate::auto_paste::paste_into_target(target)
+                                        {
+                                            eprintln!("Auto paste error: {e}");
+                                        }
+                                    } else {
+                                        eprintln!("Auto paste skipped: no saved target window");
+                                    }
+                                }
+
                                 if notify {
                                     play_notification();
                                 }
@@ -652,6 +673,7 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
         tts_engine: initial_tts_engine,
         tts_downloading: false,
         tts_stop: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        auto_paste_target: None,
     }));
 
     // Shared state

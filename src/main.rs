@@ -22,6 +22,7 @@
 mod log;
 mod api;
 mod audio;
+mod auto_paste;
 mod config;
 mod db;
 mod input;

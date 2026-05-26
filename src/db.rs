@@ -15,6 +15,7 @@ const VALID_SETTING_PREFIXES: &[&str] = &[
     "tts_voice",
     "mouse_hotkey",
     "consume_mouse_hotkey",
+    "auto_paste_after_transcribe",
 ];
 
 /// SQLite database for transcription history and settings.

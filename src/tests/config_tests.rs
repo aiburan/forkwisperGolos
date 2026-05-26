@@ -104,3 +104,19 @@ fn mouse_hotkey_parse_rejects_scroll_wheel_values() {
     assert_eq!(config::MouseHotkey::parse("wheelup"), None);
     assert_eq!(config::MouseHotkey::parse("wheeldown"), None);
 }
+
+#[test]
+fn auto_paste_parse_disables_false_like_values() {
+    assert!(!config::parse_auto_paste("false"));
+    assert!(!config::parse_auto_paste("off"));
+    assert!(!config::parse_auto_paste("0"));
+    assert!(!config::parse_auto_paste("no"));
+}
+
+#[test]
+fn auto_paste_parse_keeps_true_for_other_values() {
+    assert!(config::parse_auto_paste("true"));
+    assert!(config::parse_auto_paste("on"));
+    assert!(config::parse_auto_paste("1"));
+    assert!(config::parse_auto_paste(""));
+}
