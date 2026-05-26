@@ -53,7 +53,7 @@ fn model_download_tiny_to_tempdir() {
     }
 
     let bytes = resp.bytes().unwrap();
-    // Tiny model is ~75 MB; just verify we got a reasonable amount of data
+    // Tiny multilingual model is ~78 MB; just verify we got a reasonable amount of data
     assert!(
         bytes.len() > 1_000_000,
         "downloaded model is suspiciously small: {} bytes",

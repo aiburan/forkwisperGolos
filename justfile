@@ -1,5 +1,5 @@
 models_dir := env("HOME") / ".local/share/whispercrabs/models"
-default_model := "ggml-base.en.bin"
+default_model := "ggml-tiny.bin"
 
 # Install system dependencies
 deps:
@@ -65,10 +65,10 @@ download-model model=default_model:
 # List available whisper models
 list-models:
     @echo "Available models (pass to run-local or download-model):"
-    @echo "  ggml-tiny.en.bin     (~75MB, fastest, English only)"
-    @echo "  ggml-base.en.bin     (~142MB, good balance, English only) [default]"
-    @echo "  ggml-small.en.bin    (~466MB, better accuracy, English only)"
-    @echo "  ggml-medium.en.bin   (~1.5GB, high accuracy, English only)"
+    @echo "  ggml-tiny.bin        (~78MB, fastest, multilingual) [default]"
+    @echo "  ggml-base.bin        (~148MB, good balance, multilingual)"
+    @echo "  ggml-small.bin       (~488MB, better accuracy, multilingual)"
+    @echo "  ggml-medium.bin      (~1.53GB, high accuracy, multilingual)"
     @echo "  ggml-large-v3.bin    (~3.1GB, best accuracy, multilingual)"
     @echo ""
-    @echo "Example: just run-local ggml-small.en.bin"
+    @echo "Example: just run-local ggml-small.bin"

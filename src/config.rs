@@ -95,27 +95,27 @@ pub struct LocalModelPreset {
 pub const LOCAL_MODEL_PRESETS: &[LocalModelPreset] = &[
     LocalModelPreset {
         id: "local-tiny",
-        label: "Tiny",
-        file_name: "ggml-tiny.en.bin",
-        size_label: "~75 MB",
+        label: "Tiny Multilingual",
+        file_name: "ggml-tiny.bin",
+        size_label: "~78 MB",
     },
     LocalModelPreset {
         id: "local-base",
-        label: "Base",
-        file_name: "ggml-base.en.bin",
-        size_label: "~142 MB",
+        label: "Base Multilingual",
+        file_name: "ggml-base.bin",
+        size_label: "~148 MB",
     },
     LocalModelPreset {
         id: "local-small",
-        label: "Small",
-        file_name: "ggml-small.en.bin",
-        size_label: "~466 MB",
+        label: "Small Multilingual",
+        file_name: "ggml-small.bin",
+        size_label: "~488 MB",
     },
     LocalModelPreset {
         id: "local-medium",
-        label: "Medium",
-        file_name: "ggml-medium.en.bin",
-        size_label: "~1.5 GB",
+        label: "Medium Multilingual",
+        file_name: "ggml-medium.bin",
+        size_label: "~1.53 GB",
     },
 ];
 

@@ -42,10 +42,48 @@ fn find_local_model_returns_known_models() {
     let tiny = config::find_local_model("local-tiny");
     assert!(tiny.is_some());
     let tiny = tiny.unwrap();
-    assert_eq!(tiny.file_name, "ggml-tiny.en.bin");
+    assert_eq!(tiny.file_name, "ggml-tiny.bin");
+    assert_eq!(tiny.label, "Tiny Multilingual");
 
     let medium = config::find_local_model("local-medium");
     assert!(medium.is_some());
+}
+
+#[test]
+fn local_model_presets_use_multilingual_files() {
+    let expected = [
+        (
+            "local-tiny",
+            "Tiny Multilingual",
+            "ggml-tiny.bin",
+            "~78 MB",
+        ),
+        (
+            "local-base",
+            "Base Multilingual",
+            "ggml-base.bin",
+            "~148 MB",
+        ),
+        (
+            "local-small",
+            "Small Multilingual",
+            "ggml-small.bin",
+            "~488 MB",
+        ),
+        (
+            "local-medium",
+            "Medium Multilingual",
+            "ggml-medium.bin",
+            "~1.53 GB",
+        ),
+    ];
+
+    for (id, label, file_name, size_label) in expected {
+        let model = config::find_local_model(id).expect("missing local model preset");
+        assert_eq!(model.label, label);
+        assert_eq!(model.file_name, file_name);
+        assert_eq!(model.size_label, size_label);
+    }
 }
 
 #[test]
@@ -74,9 +112,9 @@ fn default_local_model_is_valid() {
 
 #[test]
 fn model_url_produces_valid_huggingface_url() {
-    let url = config::model_url("ggml-tiny.en.bin");
+    let url = config::model_url("ggml-tiny.bin");
     assert!(url.starts_with("https://huggingface.co/"));
-    assert!(url.ends_with("ggml-tiny.en.bin"));
+    assert!(url.ends_with("ggml-tiny.bin"));
 }
 
 #[test]

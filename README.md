@@ -132,7 +132,7 @@ sudo pacman -S gtk4 graphene vulkan-icd-loader alsa-lib cmake clang
 
    **With a different model:**
    ```bash
-   just run-local ggml-small.en.bin
+   just run-local ggml-small.bin
    ```
 
    **API mode** (requires `API_KEY` in `.env`):
@@ -144,8 +144,8 @@ sudo pacman -S gtk4 graphene vulkan-icd-loader alsa-lib cmake clang
    ```bash
    # Download a whisper model for local mode
    mkdir -p ~/.local/share/whispercrabs/models
-   curl -L -o ~/.local/share/whispercrabs/models/ggml-base.en.bin \
-     https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
+   curl -L -o ~/.local/share/whispercrabs/models/ggml-tiny.bin \
+     https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin
 
    # Set backend in .env
    # PRIMARY_TRANSCRIPTION_SERVICE=local  (or api)
@@ -156,14 +156,14 @@ sudo pacman -S gtk4 graphene vulkan-icd-loader alsa-lib cmake clang
 
 ### Available whisper models
 
-Models are downloaded from [HuggingFace (ggerganov/whisper.cpp)](https://huggingface.co/ggerganov/whisper.cpp). Run `just list-models` to see options.
+Models are downloaded from [HuggingFace (ggerganov/whisper.cpp)](https://huggingface.co/ggerganov/whisper.cpp). The built-in local presets use multilingual models so Russian, Kazakh, and other non-English dictation work better than with `.en` models. Existing `.en` files are left in place; selecting a local preset downloads the matching multilingual file if it is missing. Run `just list-models` to see options.
 
 | Model | Size | Speed | Notes |
 |-------|------|-------|-------|
-| `ggml-tiny.en.bin` | ~75MB | Fastest | English only |
-| `ggml-base.en.bin` | ~142MB | Fast | English only (default) |
-| `ggml-small.en.bin` | ~466MB | Medium | English only, better accuracy |
-| `ggml-medium.en.bin` | ~1.5GB | Slow | English only, high accuracy |
+| `ggml-tiny.bin` | ~78MB | Fastest | Multilingual (default) |
+| `ggml-base.bin` | ~148MB | Fast | Multilingual |
+| `ggml-small.bin` | ~488MB | Medium | Multilingual, better accuracy |
+| `ggml-medium.bin` | ~1.53GB | Slow | Multilingual, high accuracy |
 | `ggml-large-v3.bin` | ~3.1GB | Slowest | Multilingual, best accuracy |
 
 ## Usage
@@ -246,10 +246,10 @@ gdbus call --session --dest=dev.whispercrabs.app --object-path=/dev/whispercrabs
 
 **Switch to local mode** (auto-downloads model if missing, choose size):
 ```bash
-# Local Base model (~142 MB, default)
+# Local Base model (~148 MB)
 gdbus call --session --dest=dev.whispercrabs.app --object-path=/dev/whispercrabs/app --method=org.gtk.Actions.Activate transcription-mode "[<'local-base'>]" {}
 
-# Local Tiny (~75 MB), Small (~466 MB), or Medium (~1.5 GB)
+# Local Tiny (~78 MB, default), Small (~488 MB), or Medium (~1.53 GB)
 gdbus call --session --dest=dev.whispercrabs.app --object-path=/dev/whispercrabs/app --method=org.gtk.Actions.Activate transcription-mode "[<'local-tiny'>]" {}
 gdbus call --session --dest=dev.whispercrabs.app --object-path=/dev/whispercrabs/app --method=org.gtk.Actions.Activate transcription-mode "[<'local-small'>]" {}
 gdbus call --session --dest=dev.whispercrabs.app --object-path=/dev/whispercrabs/app --method=org.gtk.Actions.Activate transcription-mode "[<'local-medium'>]" {}
