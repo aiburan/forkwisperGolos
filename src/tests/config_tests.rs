@@ -78,3 +78,29 @@ fn model_url_produces_valid_huggingface_url() {
     assert!(url.starts_with("https://huggingface.co/"));
     assert!(url.ends_with("ggml-tiny.en.bin"));
 }
+
+#[test]
+fn mouse_hotkey_parse_accepts_supported_values() {
+    assert_eq!(
+        config::MouseHotkey::parse("middle"),
+        Some(config::MouseHotkey::Middle)
+    );
+    assert_eq!(
+        config::MouseHotkey::parse("xbutton1"),
+        Some(config::MouseHotkey::XButton1)
+    );
+    assert_eq!(
+        config::MouseHotkey::parse("xbutton2"),
+        Some(config::MouseHotkey::XButton2)
+    );
+    assert_eq!(
+        config::MouseHotkey::parse("disabled"),
+        Some(config::MouseHotkey::Disabled)
+    );
+}
+
+#[test]
+fn mouse_hotkey_parse_rejects_scroll_wheel_values() {
+    assert_eq!(config::MouseHotkey::parse("wheelup"), None);
+    assert_eq!(config::MouseHotkey::parse("wheeldown"), None);
+}

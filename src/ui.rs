@@ -181,6 +181,214 @@ struct RuntimeState {
     tts_stop: Arc<std::sync::atomic::AtomicBool>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum ToggleSource {
+    Button,
+    MouseHotkey,
+}
+
+fn toggle_recording(
+    source: ToggleSource,
+    button: &gtk4::Button,
+    status: &gtk4::Label,
+    state: &Rc<RefCell<State>>,
+    recorder: &Rc<RefCell<Recorder>>,
+    config: &Arc<Config>,
+    db: &Arc<Mutex<Db>>,
+    runtime: &Rc<RefCell<RuntimeState>>,
+) {
+    let current = *state.borrow();
+
+    if source == ToggleSource::MouseHotkey {
+        match current {
+            State::Idle => eprintln!("mouse hotkey pressed: start"),
+            State::Recording => eprintln!("mouse hotkey pressed: stop"),
+            State::Processing => {
+                eprintln!("mouse hotkey pressed: ignored while processing");
+                return;
+            }
+            State::Synthesizing | State::Speaking => {
+                eprintln!("mouse hotkey pressed: ignored while TTS is active");
+                return;
+            }
+        }
+    }
+
+    match current {
+        State::Idle => {
+            // Guard: block recording during model download
+            if runtime.borrow().downloading {
+                show_status(status, "Downloading model...");
+                return;
+            }
+
+            // Guard: Local mode without loaded model
+            let rt = runtime.borrow();
+            if rt.active_service == TranscriptionService::Local && rt.local_whisper.is_none() {
+                drop(rt);
+                show_status(status, "No local model loaded");
+                return;
+            }
+
+            // Guard: API mode - check if provider needs key and none is set
+            if rt.active_service == TranscriptionService::Api {
+                let needs_key = config::find_preset(&rt.active_provider)
+                    .map(|p| p.needs_key)
+                    .unwrap_or(true); // custom defaults to needing a key check
+                if needs_key && rt.api_key.is_none() {
+                    drop(rt);
+                    show_status(status, "No API key set");
+                    return;
+                }
+            }
+            drop(rt);
+
+            if !Recorder::input_available() {
+                show_status(status, "No microphone found");
+                return;
+            }
+
+            if let Err(e) = recorder.borrow_mut().start() {
+                eprintln!("Record start error: {e}");
+                show_status(status, &format!("Err: {e}"));
+                return;
+            }
+            *state.borrow_mut() = State::Recording;
+            button.add_css_class("recording");
+            button.remove_css_class("done");
+
+            show_status(status, "Recording...");
+        }
+        State::Recording => {
+            *state.borrow_mut() = State::Processing;
+            button.remove_css_class("recording");
+            button.add_css_class("processing");
+
+            show_status(status, "Transcribing...");
+
+            let wav = match recorder.borrow_mut().stop() {
+                Ok(w) => w,
+                Err(e) => {
+                    eprintln!("Record stop error: {e}");
+                    show_status(status, &format!("Err: {e}"));
+                    *state.borrow_mut() = State::Idle;
+                    button.remove_css_class("processing");
+                    return;
+                }
+            };
+
+            let db_inner = Arc::clone(db);
+            let sample_rate = recorder.borrow().sample_rate();
+
+            let (tx, rx) = std::sync::mpsc::channel::<Result<String, String>>();
+
+            let rt = runtime.borrow();
+            match rt.active_service {
+                TranscriptionService::Api => {
+                    let base_url = rt.api_base_url.clone();
+                    let api_key = rt.api_key.clone().unwrap_or_default();
+                    let model = rt.api_model.clone();
+                    std::thread::spawn(move || {
+                        let rt =
+                            tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+                        let result =
+                            rt.block_on(crate::api::transcribe(&base_url, &api_key, &model, wav));
+                        let _ = tx.send(result);
+                    });
+                }
+                TranscriptionService::Local => {
+                    let Some(whisper) = rt.local_whisper.clone() else {
+                        let _ = tx.send(Err("Local model not loaded".into()));
+                        return;
+                    };
+                    std::thread::spawn(move || {
+                        let result = whisper.transcribe(&wav, sample_rate);
+                        let _ = tx.send(result);
+                    });
+                }
+            }
+            drop(rt);
+
+            let btn2 = button.clone();
+            let st2 = status.clone();
+            let state_c2 = Rc::clone(state);
+            let notify = config.sound_notification;
+            glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+                match rx.try_recv() {
+                    Ok(Ok(text)) => {
+                        if let Ok(db) = db_inner.lock()
+                            && let Err(e) = db.insert(&text)
+                        {
+                            eprintln!("DB insert error: {e}");
+                        }
+                        match crate::input::copy_to_clipboard(&text) {
+                            Ok(_) => {
+                                if notify {
+                                    play_notification();
+                                }
+                                btn2.remove_css_class("processing");
+                                btn2.add_css_class("done");
+
+                                show_status(&st2, "Copied!");
+                                let st3 = st2.clone();
+                                let btn3 = btn2.clone();
+                                glib::timeout_add_local_once(
+                                    std::time::Duration::from_secs(2),
+                                    move || {
+                                        hide_status(&st3);
+                                        btn3.remove_css_class("done");
+                                    },
+                                );
+                            }
+                            Err(e) => {
+                                eprintln!("Clipboard error: {e}");
+                                btn2.remove_css_class("processing");
+
+                                show_status(&st2, "Error!");
+                                let st3 = st2.clone();
+                                glib::timeout_add_local_once(
+                                    std::time::Duration::from_secs(3),
+                                    move || hide_status(&st3),
+                                );
+                            }
+                        }
+                        *state_c2.borrow_mut() = State::Idle;
+                        glib::ControlFlow::Break
+                    }
+                    Ok(Err(e)) => {
+                        eprintln!("Transcription error: {e}");
+                        btn2.remove_css_class("processing");
+                        show_status(&st2, "Error!");
+                        let st3 = st2.clone();
+                        glib::timeout_add_local_once(std::time::Duration::from_secs(3), move || {
+                            hide_status(&st3)
+                        });
+                        *state_c2.borrow_mut() = State::Idle;
+                        glib::ControlFlow::Break
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+                    Err(_) => {
+                        *state_c2.borrow_mut() = State::Idle;
+                        btn2.remove_css_class("processing");
+                        glib::ControlFlow::Break
+                    }
+                }
+            });
+        }
+        State::Processing | State::Synthesizing => {}
+        State::Speaking => {
+            if source == ToggleSource::Button {
+                // Stop TTS playback - completion callback will reset to Idle
+                dbg_log!("[TTS] stop requested via button click");
+                runtime
+                    .borrow()
+                    .tts_stop
+                    .store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+    }
+}
+
 pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
     // Load CSS
     let provider = gtk4::CssProvider::new();
@@ -460,180 +668,55 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
     let runtime_c = Rc::clone(&runtime);
 
     button.connect_clicked(move |_| {
-        let current = *state_c.borrow();
-        match current {
-            State::Idle => {
-                // Guard: block recording during model download
-                if runtime_c.borrow().downloading {
-                    show_status(&st, "Downloading model...");
-                    return;
-                }
+        toggle_recording(
+            ToggleSource::Button,
+            &btn,
+            &st,
+            &state_c,
+            &rec_c,
+            &config_c,
+            &db_c,
+            &runtime_c,
+        );
+    });
 
-                // Guard: Local mode without loaded model
-                let rt = runtime_c.borrow();
-                if rt.active_service == TranscriptionService::Local && rt.local_whisper.is_none() {
-                    drop(rt);
-                    show_status(&st, "No local model loaded");
-                    return;
-                }
+    // --- Global mouse hotkey (Windows) ---
+    {
+        let (mouse_tx, mouse_rx) = std::sync::mpsc::channel();
+        match crate::mouse_hotkey::start_listener(
+            config.mouse_hotkey,
+            config.consume_mouse_hotkey,
+            mouse_tx,
+        ) {
+            Ok(Some(_handle)) => {
+                let btn = button.clone();
+                let st = status.clone();
+                let state_c = Rc::clone(&state);
+                let rec_c = Rc::clone(&recorder);
+                let config_c = Arc::clone(&config);
+                let db_c = Arc::clone(&db);
+                let runtime_c = Rc::clone(&runtime);
 
-                // Guard: API mode — check if provider needs key and none is set
-                if rt.active_service == TranscriptionService::Api {
-                    let needs_key = config::find_preset(&rt.active_provider)
-                        .map(|p| p.needs_key)
-                        .unwrap_or(true); // custom defaults to needing a key check
-                    if needs_key && rt.api_key.is_none() {
-                        drop(rt);
-                        show_status(&st, "No API key set");
-                        return;
+                glib::timeout_add_local(std::time::Duration::from_millis(30), move || {
+                    while mouse_rx.try_recv().is_ok() {
+                        toggle_recording(
+                            ToggleSource::MouseHotkey,
+                            &btn,
+                            &st,
+                            &state_c,
+                            &rec_c,
+                            &config_c,
+                            &db_c,
+                            &runtime_c,
+                        );
                     }
-                }
-                drop(rt);
-
-                if !Recorder::input_available() {
-                    show_status(&st, "No microphone found");
-                    return;
-                }
-
-                if let Err(e) = rec_c.borrow_mut().start() {
-                    eprintln!("Record start error: {e}");
-                    show_status(&st, &format!("Err: {e}"));
-                    return;
-                }
-                *state_c.borrow_mut() = State::Recording;
-                btn.add_css_class("recording");
-                btn.remove_css_class("done");
-
-                show_status(&st, "Recording...");
-            }
-            State::Recording => {
-                *state_c.borrow_mut() = State::Processing;
-                btn.remove_css_class("recording");
-                btn.add_css_class("processing");
-
-                show_status(&st, "Transcribing...");
-
-                let wav = match rec_c.borrow_mut().stop() {
-                    Ok(w) => w,
-                    Err(e) => {
-                        eprintln!("Record stop error: {e}");
-                        show_status(&st, &format!("Err: {e}"));
-                        *state_c.borrow_mut() = State::Idle;
-                        btn.remove_css_class("processing");
-                        return;
-                    }
-                };
-
-                let db_inner = Arc::clone(&db_c);
-                let sample_rate = rec_c.borrow().sample_rate();
-
-                let (tx, rx) = std::sync::mpsc::channel::<Result<String, String>>();
-
-                let rt = runtime_c.borrow();
-                match rt.active_service {
-                    TranscriptionService::Api => {
-                        let base_url = rt.api_base_url.clone();
-                        let api_key = rt.api_key.clone().unwrap_or_default();
-                        let model = rt.api_model.clone();
-                        std::thread::spawn(move || {
-                            let rt = tokio::runtime::Runtime::new()
-                                .expect("failed to create tokio runtime");
-                            let result = rt
-                                .block_on(crate::api::transcribe(&base_url, &api_key, &model, wav));
-                            let _ = tx.send(result);
-                        });
-                    }
-                    TranscriptionService::Local => {
-                        let Some(whisper) = rt.local_whisper.clone() else {
-                            let _ = tx.send(Err("Local model not loaded".into()));
-                            return;
-                        };
-                        std::thread::spawn(move || {
-                            let result = whisper.transcribe(&wav, sample_rate);
-                            let _ = tx.send(result);
-                        });
-                    }
-                }
-                drop(rt);
-
-                let btn2 = btn.clone();
-                let st2 = st.clone();
-                let state_c2 = Rc::clone(&state_c);
-                let notify = config_c.sound_notification;
-                glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
-                    match rx.try_recv() {
-                        Ok(Ok(text)) => {
-                            if let Ok(db) = db_inner.lock()
-                                && let Err(e) = db.insert(&text)
-                            {
-                                eprintln!("DB insert error: {e}");
-                            }
-                            match crate::input::copy_to_clipboard(&text) {
-                                Ok(_) => {
-                                    if notify {
-                                        play_notification();
-                                    }
-                                    btn2.remove_css_class("processing");
-                                    btn2.add_css_class("done");
-
-                                    show_status(&st2, "Copied!");
-                                    let st3 = st2.clone();
-                                    let btn3 = btn2.clone();
-                                    glib::timeout_add_local_once(
-                                        std::time::Duration::from_secs(2),
-                                        move || {
-                                            hide_status(&st3);
-                                            btn3.remove_css_class("done");
-                                        },
-                                    );
-                                }
-                                Err(e) => {
-                                    eprintln!("Clipboard error: {e}");
-                                    btn2.remove_css_class("processing");
-
-                                    show_status(&st2, "Error!");
-                                    let st3 = st2.clone();
-                                    glib::timeout_add_local_once(
-                                        std::time::Duration::from_secs(3),
-                                        move || hide_status(&st3),
-                                    );
-                                }
-                            }
-                            *state_c2.borrow_mut() = State::Idle;
-                            glib::ControlFlow::Break
-                        }
-                        Ok(Err(e)) => {
-                            eprintln!("Transcription error: {e}");
-                            btn2.remove_css_class("processing");
-                            show_status(&st2, "Error!");
-                            let st3 = st2.clone();
-                            glib::timeout_add_local_once(
-                                std::time::Duration::from_secs(3),
-                                move || hide_status(&st3),
-                            );
-                            *state_c2.borrow_mut() = State::Idle;
-                            glib::ControlFlow::Break
-                        }
-                        Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
-                        Err(_) => {
-                            *state_c2.borrow_mut() = State::Idle;
-                            btn2.remove_css_class("processing");
-                            glib::ControlFlow::Break
-                        }
-                    }
+                    glib::ControlFlow::Continue
                 });
             }
-            State::Processing | State::Synthesizing => {}
-            State::Speaking => {
-                // Stop TTS playback — completion callback will reset to Idle
-                dbg_log!("[TTS] stop requested via button click");
-                runtime_c
-                    .borrow()
-                    .tts_stop
-                    .store(true, std::sync::atomic::Ordering::Relaxed);
-            }
+            Ok(None) => {}
+            Err(e) => eprintln!("mouse hotkey listener error: {e}"),
         }
-    });
+    }
 
     // --- Right-click popover menu (on the button) ---
     let mode_action = gtk4::gio::SimpleAction::new_stateful(

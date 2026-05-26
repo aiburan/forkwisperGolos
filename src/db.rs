@@ -13,6 +13,8 @@ const VALID_SETTING_PREFIXES: &[&str] = &[
     "api_key_",
     "tts_provider",
     "tts_voice",
+    "mouse_hotkey",
+    "consume_mouse_hotkey",
 ];
 
 /// SQLite database for transcription history and settings.

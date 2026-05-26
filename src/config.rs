@@ -7,6 +7,36 @@ pub enum TranscriptionService {
     Local,
 }
 
+/// Global mouse button used to toggle recording on Windows.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum MouseHotkey {
+    Disabled,
+    Middle,
+    XButton1,
+    XButton2,
+}
+
+impl MouseHotkey {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_lowercase().as_str() {
+            "disabled" | "off" | "none" => Some(Self::Disabled),
+            "middle" | "mbutton" | "mouse3" => Some(Self::Middle),
+            "xbutton1" | "mouse4" | "button4" => Some(Self::XButton1),
+            "xbutton2" | "mouse5" | "button5" => Some(Self::XButton2),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Disabled => "disabled",
+            Self::Middle => "middle",
+            Self::XButton1 => "xbutton1",
+            Self::XButton2 => "xbutton2",
+        }
+    }
+}
+
 /// Built-in API provider configuration.
 pub struct ApiPreset {
     pub id: &'static str,
@@ -211,6 +241,8 @@ pub struct Config {
     pub db_path: PathBuf,
     pub models_dir: PathBuf,
     pub sound_notification: bool,
+    pub mouse_hotkey: MouseHotkey,
+    pub consume_mouse_hotkey: bool,
 }
 
 impl Config {
@@ -263,6 +295,15 @@ impl Config {
             .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
             .unwrap_or(false);
 
+        let mouse_hotkey = env_any(&["MOUSE_HOTKEY", "mouse_hotkey"])
+            .as_deref()
+            .and_then(MouseHotkey::parse)
+            .unwrap_or(MouseHotkey::XButton1);
+
+        let consume_mouse_hotkey = env_any(&["CONSUME_MOUSE_HOTKEY", "consume_mouse_hotkey"])
+            .map(|v| parse_bool(&v))
+            .unwrap_or(true);
+
         Self {
             transcription_service,
             api_base_url,
@@ -271,6 +312,19 @@ impl Config {
             db_path,
             models_dir,
             sound_notification,
+            mouse_hotkey,
+            consume_mouse_hotkey,
         }
     }
+}
+
+fn env_any(keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| std::env::var(key).ok())
+}
+
+fn parse_bool(value: &str) -> bool {
+    value.eq_ignore_ascii_case("true")
+        || value.eq_ignore_ascii_case("yes")
+        || value.eq_ignore_ascii_case("on")
+        || value == "1"
 }

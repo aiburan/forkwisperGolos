@@ -1,0 +1,125 @@
+name: Windows CI Build
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  TARGET: x86_64-pc-windows-msvc
+  ARTIFACT_NAME: whispercrabs-windows-x86_64
+  GTK_ROOT: C:\gtk-build\gtk\x64\release
+
+jobs:
+  windows-build:
+    name: Build Windows release zip
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Remove local cargo overrides
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath ".cargo\config.toml" -Force -ErrorAction SilentlyContinue
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.TARGET }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ env.TARGET }}-windows-ci
+
+      - name: Set up Python for gvsbuild
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Cache GTK4 build
+        id: cache-gtk
+        uses: actions/cache@v4
+        with:
+          path: C:\gtk-build
+          key: gvsbuild-gtk4-windows-latest-v1
+
+      - name: Build GTK4 with gvsbuild
+        if: steps.cache-gtk.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          cargo install cargo-c --locked
+
+          # gvsbuild uses its own cargo path while building librsvg.
+          New-Item -ItemType Directory -Path C:\gtk-build\tools\cargo\bin -Force
+          Copy-Item "$env:USERPROFILE\.cargo\bin\cargo-cbuild.exe" C:\gtk-build\tools\cargo\bin\
+          Copy-Item "$env:USERPROFILE\.cargo\bin\cargo-capi.exe" C:\gtk-build\tools\cargo\bin\ -ErrorAction SilentlyContinue
+          Copy-Item "$env:USERPROFILE\.cargo\bin\cargo-cinstall.exe" C:\gtk-build\tools\cargo\bin\ -ErrorAction SilentlyContinue
+
+          python -m pip install --upgrade pip
+          pip install gvsbuild
+          gvsbuild build gtk4
+
+      - name: Configure GTK4 environment
+        shell: pwsh
+        run: |
+          $gtkBin = Join-Path $env:GTK_ROOT "bin"
+          $gtkLib = Join-Path $env:GTK_ROOT "lib"
+
+          if (!(Test-Path -LiteralPath $gtkBin)) {
+            throw "GTK bin directory not found: $gtkBin"
+          }
+          if (!(Test-Path -LiteralPath (Join-Path $gtkLib "pkgconfig"))) {
+            throw "GTK pkgconfig directory not found: $gtkLib\pkgconfig"
+          }
+
+          $gtkBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "PKG_CONFIG_PATH=$gtkLib\pkgconfig" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LIB=$gtkLib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build release executable
+        run: cargo build --release --target ${{ env.TARGET }}
+
+      - name: Package Windows zip
+        shell: pwsh
+        run: |
+          $staging = Join-Path $env:RUNNER_TEMP "whispercrabs-windows"
+          New-Item -ItemType Directory -Path $staging -Force | Out-Null
+
+          Copy-Item "target\${{ env.TARGET }}\release\whispercrabs.exe" $staging\
+          Copy-Item "$env:GTK_ROOT\bin\*.dll" $staging\
+
+          $exe = Join-Path $staging "whispercrabs.exe"
+          if (!(Test-Path -LiteralPath $exe)) {
+            throw "Packaged executable missing: $exe"
+          }
+
+          $dllCount = (Get-ChildItem -LiteralPath $staging -Filter "*.dll" | Measure-Object).Count
+          if ($dllCount -eq 0) {
+            throw "No GTK DLLs were packaged"
+          }
+
+          Compress-Archive -Path "$staging\*" -DestinationPath "${{ env.ARTIFACT_NAME }}.zip" -Force
+
+      - name: Upload Windows zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ env.ARTIFACT_NAME }}.zip
+          if-no-files-found: error
+
+      - name: Attach Windows zip to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: ${{ env.ARTIFACT_NAME }}.zip

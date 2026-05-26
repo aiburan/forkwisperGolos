@@ -26,6 +26,7 @@ mod config;
 mod db;
 mod input;
 mod local_stt;
+mod mouse_hotkey;
 #[cfg(test)]
 mod tests;
 mod tts;
