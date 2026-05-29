@@ -37,6 +37,46 @@ impl MouseHotkey {
     }
 }
 
+/// Language hint for local whisper transcription.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum WhisperLanguage {
+    Ru,
+    En,
+    Kk,
+    Auto,
+}
+
+impl WhisperLanguage {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_lowercase().as_str() {
+            "ru" => Some(Self::Ru),
+            "en" => Some(Self::En),
+            "kk" => Some(Self::Kk),
+            "auto" => Some(Self::Auto),
+            _ => None,
+        }
+    }
+
+    pub fn parse_or_default(value: &str) -> Self {
+        Self::parse(value).unwrap_or_default()
+    }
+
+    pub fn whisper_code(self) -> Option<&'static str> {
+        match self {
+            Self::Ru => Some("ru"),
+            Self::En => Some("en"),
+            Self::Kk => Some("kk"),
+            Self::Auto => None,
+        }
+    }
+}
+
+impl Default for WhisperLanguage {
+    fn default() -> Self {
+        Self::Ru
+    }
+}
+
 /// Built-in API provider configuration.
 pub struct ApiPreset {
     pub id: &'static str,
@@ -241,6 +281,7 @@ pub struct Config {
     pub db_path: PathBuf,
     pub models_dir: PathBuf,
     pub sound_notification: bool,
+    pub whisper_language: WhisperLanguage,
     pub mouse_hotkey: MouseHotkey,
     pub consume_mouse_hotkey: bool,
     pub auto_paste_after_transcribe: bool,
@@ -296,6 +337,11 @@ impl Config {
             .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
             .unwrap_or(false);
 
+        let whisper_language = env_any(&["WHISPER_LANGUAGE", "whisper_language"])
+            .as_deref()
+            .map(WhisperLanguage::parse_or_default)
+            .unwrap_or_default();
+
         let mouse_hotkey = env_any(&["MOUSE_HOTKEY", "mouse_hotkey"])
             .as_deref()
             .and_then(MouseHotkey::parse)
@@ -318,6 +364,7 @@ impl Config {
             db_path,
             models_dir,
             sound_notification,
+            whisper_language,
             mouse_hotkey,
             consume_mouse_hotkey,
             auto_paste_after_transcribe,

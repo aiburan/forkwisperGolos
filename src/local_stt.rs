@@ -5,19 +5,22 @@ use std::io::Cursor;
 use std::path::Path;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
+use crate::config::WhisperLanguage;
+
 const WHISPER_SAMPLE_RATE: u32 = 16000;
 
 /// Local speech-to-text engine using whisper.cpp.
 pub struct LocalWhisper {
     ctx: WhisperContext,
+    language: WhisperLanguage,
 }
 
 impl LocalWhisper {
-    pub fn new(model_path: &Path) -> Result<Self, String> {
+    pub fn new(model_path: &Path, language: WhisperLanguage) -> Result<Self, String> {
         let path_str = model_path.to_str().ok_or("Model path is not valid UTF-8")?;
         let ctx = WhisperContext::new_with_params(path_str, WhisperContextParameters::default())
             .map_err(|e| format!("Failed to load whisper model: {e}"))?;
-        Ok(Self { ctx })
+        Ok(Self { ctx, language })
     }
 
     pub fn transcribe(&self, wav_data: &[u8], device_sample_rate: u32) -> Result<String, String> {
@@ -51,6 +54,8 @@ impl LocalWhisper {
         params.set_print_progress(false);
         params.set_print_realtime(false);
         params.set_print_timestamps(false);
+        params.set_translate(false);
+        params.set_language(self.language.whisper_code());
 
         state
             .full(params, &audio_16k)

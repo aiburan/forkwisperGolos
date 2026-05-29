@@ -138,6 +138,50 @@ fn mouse_hotkey_parse_accepts_supported_values() {
 }
 
 #[test]
+fn default_whisper_language_is_russian() {
+    assert_eq!(
+        config::WhisperLanguage::default(),
+        config::WhisperLanguage::Ru
+    );
+}
+
+#[test]
+fn whisper_language_parse_accepts_supported_values() {
+    assert_eq!(
+        config::WhisperLanguage::parse("ru"),
+        Some(config::WhisperLanguage::Ru)
+    );
+    assert_eq!(
+        config::WhisperLanguage::parse("en"),
+        Some(config::WhisperLanguage::En)
+    );
+    assert_eq!(
+        config::WhisperLanguage::parse("kk"),
+        Some(config::WhisperLanguage::Kk)
+    );
+    assert_eq!(
+        config::WhisperLanguage::parse("auto"),
+        Some(config::WhisperLanguage::Auto)
+    );
+}
+
+#[test]
+fn whisper_language_codes_match_local_whisper_params() {
+    assert_eq!(config::WhisperLanguage::Ru.whisper_code(), Some("ru"));
+    assert_eq!(config::WhisperLanguage::En.whisper_code(), Some("en"));
+    assert_eq!(config::WhisperLanguage::Kk.whisper_code(), Some("kk"));
+    assert_eq!(config::WhisperLanguage::Auto.whisper_code(), None);
+}
+
+#[test]
+fn invalid_whisper_language_falls_back_to_default() {
+    assert_eq!(
+        config::WhisperLanguage::parse_or_default("de"),
+        config::WhisperLanguage::Ru
+    );
+}
+
+#[test]
 fn mouse_hotkey_parse_rejects_scroll_wheel_values() {
     assert_eq!(config::MouseHotkey::parse("wheelup"), None);
     assert_eq!(config::MouseHotkey::parse("wheeldown"), None);

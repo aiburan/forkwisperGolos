@@ -617,7 +617,7 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
                 .unwrap_or(&config::LOCAL_MODEL_PRESETS[0]); // default to "tiny"
             let model_path = config.models_dir.join(lm.file_name);
             if model_path.exists() {
-                match LocalWhisper::new(&model_path) {
+                match LocalWhisper::new(&model_path, config.whisper_language) {
                     Ok(w) => Some(Arc::new(w)),
                     Err(e) => {
                         eprintln!("Failed to load whisper model: {e}");
@@ -1743,16 +1743,30 @@ fn switch_to_local(
 
     let model_path = config.models_dir.join(local_preset.file_name);
     if model_path.exists() {
-        load_whisper_model(runtime, &model_path, action, status);
+        load_whisper_model(
+            runtime,
+            &model_path,
+            config.whisper_language,
+            action,
+            status,
+        );
     } else {
         let url = config::model_url(local_preset.file_name);
-        download_and_load_model(runtime, &model_path, &url, action, status);
+        download_and_load_model(
+            runtime,
+            &model_path,
+            &url,
+            config.whisper_language,
+            action,
+            status,
+        );
     }
 }
 
 fn load_whisper_model(
     runtime: &Rc<RefCell<RuntimeState>>,
     model_path: &std::path::Path,
+    language: config::WhisperLanguage,
     action: &gtk4::gio::SimpleAction,
     status: &gtk4::Label,
 ) {
@@ -1762,7 +1776,7 @@ fn load_whisper_model(
     let (tx, rx) = std::sync::mpsc::channel::<Result<Arc<LocalWhisper>, String>>();
 
     std::thread::spawn(move || {
-        let result = LocalWhisper::new(&model_path).map(Arc::new);
+        let result = LocalWhisper::new(&model_path, language).map(Arc::new);
         let _ = tx.send(result);
     });
 
@@ -1831,6 +1845,7 @@ fn download_and_load_model(
     runtime: &Rc<RefCell<RuntimeState>>,
     model_path: &std::path::Path,
     url: &str,
+    language: config::WhisperLanguage,
     action: &gtk4::gio::SimpleAction,
     status: &gtk4::Label,
 ) {
@@ -1938,7 +1953,7 @@ fn download_and_load_model(
                 runtime_c.borrow_mut().downloading = false;
                 show_status(&st, "Loading model...");
                 // Now load the model
-                load_whisper_model(&runtime_c, &loaded_model_path, &action_c, &st);
+                load_whisper_model(&runtime_c, &loaded_model_path, language, &action_c, &st);
                 glib::ControlFlow::Break
             }
             Some(DownloadMsg::StepLabel(_)) => glib::ControlFlow::Continue,
