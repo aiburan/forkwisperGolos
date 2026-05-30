@@ -1,3 +1,4 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 //! # WhisperCrabs
 //!
 //! Local-first floating voice-to-text and text-to-speech tool for Linux, macOS, and Windows.

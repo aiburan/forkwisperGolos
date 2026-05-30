@@ -443,16 +443,23 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
     let icon = gtk4::Image::from_icon_name("audio-input-microphone-symbolic");
     icon.set_pixel_size(32);
 
-    // Check if icon resolved; if not, load bundled SVG
-    #[cfg(target_os = "macos")]
-    {
-        let loader =
-            gtk4::gdk_pixbuf::PixbufLoader::with_type("svg").expect("SVG loader unavailable");
-        loader.write(MIC_SVG).expect("failed to write SVG data");
-        loader.close().expect("failed to finalize SVG loader");
-        let pixbuf = loader.pixbuf().expect("failed to load mic icon");
-        let texture = gdk::Texture::for_pixbuf(&pixbuf);
-        icon.set_paintable(Some(&texture));
+    // Use the bundled SVG when available; keep the themed icon if SVG decoding fails.
+    match gtk4::gdk_pixbuf::PixbufLoader::with_type("svg") {
+        Ok(loader) => {
+            if let Err(e) = loader.write(MIC_SVG) {
+                eprintln!("Failed to load bundled microphone icon SVG: {e}");
+            } else if let Err(e) = loader.close() {
+                eprintln!("Failed to finalize bundled microphone icon SVG: {e}");
+            } else if let Some(pixbuf) = loader.pixbuf() {
+                let texture = gdk::Texture::for_pixbuf(&pixbuf);
+                icon.set_paintable(Some(&texture));
+            } else {
+                eprintln!("Bundled microphone icon SVG produced no pixbuf");
+            }
+        }
+        Err(e) => {
+            eprintln!("SVG loader unavailable for bundled microphone icon: {e}");
+        }
     }
 
     let button = gtk4::Button::new();
