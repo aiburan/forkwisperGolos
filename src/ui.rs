@@ -13,19 +13,28 @@ use crate::tts::PiperTts;
 
 const MIC_PNG: &[u8] = include_bytes!("icons/microphone.png");
 const NOTIFICATION_SOUND: &[u8] = include_bytes!("audio/notification.wav");
+const START_SOUND: &[u8] = include_bytes!("audio/start.wav");
 
-fn play_notification() {
-    std::thread::spawn(|| {
+fn play_sound(data: &'static [u8]) {
+    std::thread::spawn(move || {
         use rodio::{Decoder, OutputStream, Sink};
         use std::io::Cursor;
         if let Ok((_stream, handle)) = OutputStream::try_default()
             && let Ok(sink) = Sink::try_new(&handle)
-            && let Ok(source) = Decoder::new(Cursor::new(NOTIFICATION_SOUND))
+            && let Ok(source) = Decoder::new(Cursor::new(data))
         {
             sink.append(source);
             sink.sleep_until_end();
         }
     });
+}
+
+fn play_notification() {
+    play_sound(NOTIFICATION_SOUND);
+}
+
+fn play_start_sound() {
+    play_sound(START_SOUND);
 }
 
 const CSS: &str = r#"
@@ -262,6 +271,9 @@ fn toggle_recording(
             }
             runtime.borrow_mut().auto_paste_target = auto_paste_target;
             *state.borrow_mut() = State::Recording;
+            if config.sound_notification {
+                play_start_sound();
+            }
             button.add_css_class("recording");
             button.remove_css_class("done");
 
