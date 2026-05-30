@@ -11,7 +11,7 @@ use crate::db::Db;
 use crate::local_stt::LocalWhisper;
 use crate::tts::PiperTts;
 
-const MIC_SVG: &[u8] = include_bytes!("icons/microphone.svg");
+const MIC_PNG: &[u8] = include_bytes!("icons/microphone.png");
 const NOTIFICATION_SOUND: &[u8] = include_bytes!("audio/notification.wav");
 
 fn play_notification() {
@@ -439,27 +439,13 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
     vbox.set_valign(gtk4::Align::Center);
 
     // The mic button (no keyboard activation to prevent accidental recordings)
-    // Try system icon first (works on Linux), fall back to SVG pixbuf
+    // Try system icon first (works on Linux), fall back to bundled PNG.
     let icon = gtk4::Image::from_icon_name("audio-input-microphone-symbolic");
     icon.set_pixel_size(32);
 
-    // Use the bundled SVG when available; keep the themed icon if SVG decoding fails.
-    match gtk4::gdk_pixbuf::PixbufLoader::with_type("svg") {
-        Ok(loader) => {
-            if let Err(e) = loader.write(MIC_SVG) {
-                eprintln!("Failed to load bundled microphone icon SVG: {e}");
-            } else if let Err(e) = loader.close() {
-                eprintln!("Failed to finalize bundled microphone icon SVG: {e}");
-            } else if let Some(pixbuf) = loader.pixbuf() {
-                let texture = gdk::Texture::for_pixbuf(&pixbuf);
-                icon.set_paintable(Some(&texture));
-            } else {
-                eprintln!("Bundled microphone icon SVG produced no pixbuf");
-            }
-        }
-        Err(e) => {
-            eprintln!("SVG loader unavailable for bundled microphone icon: {e}");
-        }
+    match gdk::Texture::from_bytes(&gtk4::glib::Bytes::from_static(MIC_PNG)) {
+        Ok(texture) => icon.set_paintable(Some(&texture)),
+        Err(e) => eprintln!("Failed to load bundled microphone PNG: {e}"),
     }
 
     let button = gtk4::Button::new();
