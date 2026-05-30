@@ -14,7 +14,7 @@ categories = ["multimedia::audio", "gui"]
 exclude = ["src/screenshots/*", ".github/*", ".DS_Store"]
 
 [dependencies]
-gtk4 = "0.9"
+gtk4 = { version = "0.9", features = ["v4_6"] }
 cpal = "0.15"
 hound = "3.5"
 reqwest = { version = "0.12", features = ["multipart", "json", "blocking"] }
