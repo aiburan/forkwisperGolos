@@ -166,6 +166,35 @@ fn hide_status(label: &gtk4::Label) {
     label.set_opacity(0.0);
 }
 
+#[cfg(windows)]
+fn set_window_topmost(widget: &impl IsA<gtk4::Widget>, on: bool) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowPos,
+    };
+
+    let Some(surface) = widget.native().and_then(|native| native.surface()) else {
+        return;
+    };
+
+    let hwnd = gdk4_win32::Win32Surface::impl_hwnd(&surface);
+    let insert_after = if on { HWND_TOPMOST } else { HWND_NOTOPMOST };
+
+    unsafe {
+        let _ = SetWindowPos(
+            hwnd,
+            insert_after,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        );
+    }
+}
+
+#[cfg(not(windows))]
+fn set_window_topmost(_widget: &impl IsA<gtk4::Widget>, _on: bool) {}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum State {
     Idle,
@@ -271,6 +300,7 @@ fn toggle_recording(
             }
             runtime.borrow_mut().auto_paste_target = auto_paste_target;
             *state.borrow_mut() = State::Recording;
+            set_window_topmost(button, true);
             if config.sound_notification {
                 play_start_sound();
             }
@@ -281,6 +311,7 @@ fn toggle_recording(
         }
         State::Recording => {
             *state.borrow_mut() = State::Processing;
+            set_window_topmost(button, false);
             button.remove_css_class("recording");
             button.add_css_class("processing");
 

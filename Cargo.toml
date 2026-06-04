@@ -30,6 +30,10 @@ rubato = "0.14"
 rodio = { version = "0.19", default-features = false, features = ["wav"] }
 arboard = "3"
 
+[target.'cfg(windows)'.dependencies]
+gdk4-win32 = "0.9"
+windows = { version = "0.56", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+
 
 [dev-dependencies]
 tempfile = "3"
