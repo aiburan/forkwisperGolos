@@ -15,6 +15,20 @@ const MIC_PNG: &[u8] = include_bytes!("icons/microphone.png");
 const NOTIFICATION_SOUND: &[u8] = include_bytes!("audio/notification.wav");
 const START_SOUND: &[u8] = include_bytes!("audio/start.wav");
 
+#[cfg(windows)]
+#[link(name = "user32")]
+unsafe extern "system" {
+    fn SetWindowPos(
+        hwnd: *mut core::ffi::c_void,
+        insert_after: *mut core::ffi::c_void,
+        x: i32,
+        y: i32,
+        cx: i32,
+        cy: i32,
+        flags: u32,
+    ) -> i32;
+}
+
 fn play_sound(data: &'static [u8]) {
     std::thread::spawn(move || {
         use rodio::{Decoder, OutputStream, Sink};
@@ -168,27 +182,16 @@ fn hide_status(label: &gtk4::Label) {
 
 #[cfg(windows)]
 fn set_window_topmost(widget: &impl IsA<gtk4::Widget>, on: bool) {
-    use windows::Win32::UI::WindowsAndMessaging::{
-        HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowPos,
-    };
-
     let Some(surface) = widget.native().and_then(|native| native.surface()) else {
         return;
     };
 
     let hwnd = gdk4_win32::Win32Surface::impl_hwnd(&surface);
-    let insert_after = if on { HWND_TOPMOST } else { HWND_NOTOPMOST };
+    let raw = hwnd.0 as *mut core::ffi::c_void;
+    let insert_after = if on { -1isize } else { -2isize } as *mut core::ffi::c_void;
 
     unsafe {
-        let _ = SetWindowPos(
-            hwnd,
-            insert_after,
-            0,
-            0,
-            0,
-            0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
-        );
+        SetWindowPos(raw, insert_after, 0, 0, 0, 0, 0x0013);
     }
 }
 
