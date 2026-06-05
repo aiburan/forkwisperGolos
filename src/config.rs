@@ -335,7 +335,7 @@ impl Config {
 
         let sound_notification = std::env::var("SOUND_NOTIFICATION_ON_COMPLETION")
             .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
-            .unwrap_or(false);
+            .unwrap_or(true);
 
         let whisper_language = env_any(&["WHISPER_LANGUAGE", "whisper_language"])
             .as_deref()
