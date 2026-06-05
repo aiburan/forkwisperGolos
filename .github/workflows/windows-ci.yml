@@ -39,7 +39,7 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ env.TARGET }}-windows-ci
+          key: ${{ env.TARGET }}-windows-ci-ggml-portable
 
       - name: Set up Python for gvsbuild
         uses: actions/setup-python@v5
@@ -87,6 +87,7 @@ jobs:
           "LIB=$gtkLib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Set portable GGML toolchain
+        shell: pwsh
         run: |
           $p = "$env:GITHUB_WORKSPACE/ci/ggml-portable.cmake" -replace '\\','/'
           "CMAKE_TOOLCHAIN_FILE=$p" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
