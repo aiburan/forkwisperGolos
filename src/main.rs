@@ -37,7 +37,52 @@ mod ui;
 use gtk4::prelude::*;
 use std::sync::Arc;
 
+fn crash_log_path() -> std::path::PathBuf {
+    dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("whispercrabs")
+        .join("crash.log")
+}
+
+fn append_crash_log(payload: &str) {
+    let path = crash_log_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        use std::io::Write;
+        let _ = writeln!(file, "{payload}");
+    }
+}
+
+fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let message = info
+            .payload()
+            .downcast_ref::<&str>()
+            .copied()
+            .or_else(|| info.payload().downcast_ref::<String>().map(String::as_str))
+            .unwrap_or("non-string panic payload");
+        let location = info
+            .location()
+            .map(|loc| format!("{}:{}:{}", loc.file(), loc.line(), loc.column()))
+            .unwrap_or_else(|| "unknown location".to_string());
+        append_crash_log(&format!(
+            "[{}] panic: {message}\nlocation: {location}",
+            chrono::Local::now().to_rfc3339()
+        ));
+        default_hook(info);
+    }));
+}
+
 fn main() {
+    install_panic_hook();
+
     let args: Vec<String> = std::env::args().collect();
     let debug = args.iter().any(|a| a == "--debug");
     log::init(debug);

@@ -9,6 +9,24 @@ use crate::config::WhisperLanguage;
 
 const WHISPER_SAMPLE_RATE: u32 = 16000;
 
+fn append_crash_log(line: &str) {
+    let path = dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("whispercrabs")
+        .join("crash.log");
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        use std::io::Write;
+        let _ = writeln!(file, "{line}");
+    }
+}
+
 /// Local speech-to-text engine using whisper.cpp.
 pub struct LocalWhisper {
     ctx: WhisperContext,
@@ -24,6 +42,8 @@ impl LocalWhisper {
     }
 
     pub fn transcribe(&self, wav_data: &[u8], device_sample_rate: u32) -> Result<String, String> {
+        append_crash_log(&format!("transcribe: start, wav_bytes={}", wav_data.len()));
+
         // Parse WAV to f32 samples
         let cursor = Cursor::new(wav_data);
         let mut reader =
@@ -32,6 +52,11 @@ impl LocalWhisper {
             .samples::<i16>()
             .map(|s| s.unwrap_or(0) as f32 / i16::MAX as f32)
             .collect();
+        append_crash_log(&format!(
+            "transcribe: parsed {} samples, device_rate={}",
+            samples.len(),
+            device_sample_rate
+        ));
 
         if samples.is_empty() {
             return Err("No audio samples in WAV".into());
@@ -43,12 +68,17 @@ impl LocalWhisper {
         } else {
             resample(&samples, device_sample_rate, WHISPER_SAMPLE_RATE)?
         };
+        append_crash_log(&format!(
+            "transcribe: resampled to 16k, {} samples",
+            audio_16k.len()
+        ));
 
         // Run whisper inference
         let mut state = self
             .ctx
             .create_state()
             .map_err(|e| format!("Failed to create whisper state: {e}"))?;
+        append_crash_log("transcribe: whisper state created");
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
         params.set_print_special(false);
         params.set_print_progress(false);
@@ -57,9 +87,11 @@ impl LocalWhisper {
         params.set_translate(false);
         params.set_language(self.language.whisper_code());
 
+        append_crash_log("transcribe: calling full()");
         state
             .full(params, &audio_16k)
             .map_err(|e| format!("Whisper inference failed: {e}"))?;
+        append_crash_log("transcribe: full() ok");
 
         // Collect transcription text
         let mut text = String::new();
@@ -68,8 +100,10 @@ impl LocalWhisper {
                 text.push_str(s);
             }
         }
+        let text = text.trim().to_string();
+        append_crash_log(&format!("transcribe: extracted text len={}", text.len()));
 
-        Ok(text.trim().to_string())
+        Ok(text)
     }
 }
 
