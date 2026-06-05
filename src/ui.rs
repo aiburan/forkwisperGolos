@@ -788,25 +788,26 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
 
     let stt_api_section = gtk4::gio::Menu::new();
     for preset in config::API_PRESETS {
-        stt_api_section.append(
-            Some(preset.label),
-            Some(&format!("app.transcription-mode::{}", preset.id)),
-        );
+        if preset.id == "groq" {
+            stt_api_section.append(
+                Some("Groq (рекомендуем, бесплатно)"),
+                Some(&format!("app.transcription-mode::{}", preset.id)),
+            );
+        }
     }
-    stt_api_section.append(
-        Some("Custom API..."),
-        Some("app.transcription-mode::custom"),
-    );
+    stt_api_section.append(Some("Свой API…"), Some("app.transcription-mode::custom"));
 
     let stt_local_section = gtk4::gio::Menu::new();
     for lm in config::LOCAL_MODEL_PRESETS {
+        let label = lm.label.replace(" Multilingual", "");
+        let size_label = lm.size_label.replace("MB", "МБ").replace("GB", "ГБ");
         stt_local_section.append(
-            Some(&format!("{} ({})", lm.label, lm.size_label)),
+            Some(&format!("{} ({})", label, size_label)),
             Some(&format!("app.transcription-mode::{}", lm.id)),
         );
     }
 
-    // TTS section — voice selection
+    // TTS actions remain registered, but are not shown in the right-click menu.
     let tts_initial = if initial_tts_provider == TtsProvider::Piper {
         runtime.borrow().tts_voice.clone()
     } else {
@@ -820,29 +821,13 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
     let read_clipboard_action = gtk4::gio::SimpleAction::new("read-clipboard", None);
     read_clipboard_action.set_enabled(initial_tts_provider != TtsProvider::None);
 
-    let tts_section = gtk4::gio::Menu::new();
-    tts_section.append(Some("Off"), Some("app.tts-mode::none"));
-    for voice in config::PIPER_VOICES {
-        tts_section.append(
-            Some(voice.label),
-            Some(&format!("app.tts-mode::{}", voice.id)),
-        );
-    }
-
-    let tts_manage = gtk4::gio::Menu::new();
-    tts_manage.append(Some("Reset TTS"), Some("app.tts-reset"));
-    tts_manage.append(Some("Delete TTS"), Some("app.tts-delete"));
-
     let actions_section = gtk4::gio::Menu::new();
-    actions_section.append(Some("Read Clipboard"), Some("app.read-clipboard"));
-    actions_section.append(Some("History"), Some("app.show-history"));
-    actions_section.append(Some("Quit"), Some("app.quit"));
+    actions_section.append(Some("Мои диктовки"), Some("app.show-history"));
+    actions_section.append(Some("Выход"), Some("app.quit"));
 
     let menu = gtk4::gio::Menu::new();
-    menu.append_section(Some("STT — API"), &stt_api_section);
-    menu.append_section(Some("STT — Local"), &stt_local_section);
-    menu.append_section(Some("TTS — Voices"), &tts_section);
-    menu.append_section(None, &tts_manage);
+    menu.append_section(Some("Распознавание — Облако (интернет)"), &stt_api_section);
+    menu.append_section(Some("Распознавание — Локально (на устройстве)"), &stt_local_section);
     menu.append_section(None, &actions_section);
 
     let popover = gtk4::PopoverMenu::from_model(Some(&menu));
