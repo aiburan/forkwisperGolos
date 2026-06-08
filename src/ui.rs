@@ -351,6 +351,7 @@ fn toggle_recording(
                         .unwrap_or(false);
                     let post_processing_model = config.post_processing_model.clone();
                     let post_processing_style = config.post_processing_style.clone();
+                    let post_processing_prompt_path = config.post_processing_prompt_path.clone();
                     std::thread::spawn(move || {
                         let rt =
                             tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
@@ -363,6 +364,7 @@ fn toggle_recording(
                                         &api_key,
                                         &post_processing_model,
                                         &post_processing_style,
+                                        &post_processing_prompt_path,
                                         &raw,
                                     ))
                                     .unwrap_or_else(|_| raw.clone())
@@ -858,6 +860,10 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
         Some("Углублённая обработка (ИИ)"),
         Some("app.post-processing::structured"),
     );
+    post_processing_section.append(
+        Some("Редактировать промпт…"),
+        Some("app.edit-post-prompt"),
+    );
 
     // TTS actions remain registered, but are not shown in the right-click menu.
     let tts_initial = if initial_tts_provider == TtsProvider::Piper {
@@ -974,6 +980,19 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
         action.set_state(&chosen.to_variant());
     });
     app.add_action(&post_processing_action);
+
+    let edit_prompt_action = gtk4::gio::SimpleAction::new("edit-post-prompt", None);
+    let win_pp = window.clone();
+    let config_pp = Arc::clone(&config);
+    let status_pp_edit = status.clone();
+    edit_prompt_action.connect_activate(move |_, _| {
+        show_post_prompt_dialog(
+            &win_pp,
+            &config_pp.post_processing_prompt_path,
+            &status_pp_edit,
+        );
+    });
+    app.add_action(&edit_prompt_action);
 
     // Action: show history
     let history_action = gtk4::gio::SimpleAction::new("show-history", None);
@@ -1792,6 +1811,93 @@ fn show_custom_api_dialog(
             hide_status(&st);
         });
 
+        dialog_save.close();
+    });
+
+    dialog.present();
+}
+
+fn show_post_prompt_dialog(
+    parent: &gtk4::ApplicationWindow,
+    prompt_path: &std::path::Path,
+    status: &gtk4::Label,
+) {
+    let current = std::fs::read_to_string(prompt_path)
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| crate::post_process::DEFAULT_SYSTEM_PROMPT.to_string());
+
+    let dialog = gtk4::Window::builder()
+        .title("Промпт обработки")
+        .default_width(560)
+        .default_height(420)
+        .transient_for(parent)
+        .modal(true)
+        .build();
+
+    let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
+    vbox.set_margin_top(16);
+    vbox.set_margin_bottom(16);
+    vbox.set_margin_start(16);
+    vbox.set_margin_end(16);
+
+    let text_view = gtk4::TextView::new();
+    text_view.set_wrap_mode(gtk4::WrapMode::Word);
+    text_view.set_monospace(true);
+    let buffer = text_view.buffer();
+    buffer.set_text(&current);
+
+    let scroll = gtk4::ScrolledWindow::builder()
+        .vexpand(true)
+        .hexpand(true)
+        .min_content_height(300)
+        .build();
+    scroll.set_child(Some(&text_view));
+    vbox.append(&scroll);
+
+    let btn_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
+    btn_box.set_halign(gtk4::Align::End);
+    let reset_btn = gtk4::Button::with_label("Сбросить к стандартному");
+    let cancel_btn = gtk4::Button::with_label("Отмена");
+    let save_btn = gtk4::Button::with_label("Сохранить");
+    btn_box.append(&reset_btn);
+    btn_box.append(&cancel_btn);
+    btn_box.append(&save_btn);
+    vbox.append(&btn_box);
+
+    dialog.set_child(Some(&vbox));
+
+    let buffer_reset = buffer.clone();
+    reset_btn.connect_clicked(move |_| {
+        buffer_reset.set_text(crate::post_process::DEFAULT_SYSTEM_PROMPT);
+    });
+
+    let dialog_cancel = dialog.clone();
+    cancel_btn.connect_clicked(move |_| {
+        dialog_cancel.close();
+    });
+
+    let prompt_path_save = prompt_path.to_path_buf();
+    let buffer_save = buffer.clone();
+    let status_save = status.clone();
+    let dialog_save = dialog.clone();
+    save_btn.connect_clicked(move |_| {
+        let (start, end) = buffer_save.bounds();
+        let text = buffer_save.text(&start, &end, false).to_string();
+        if let Some(parent_dir) = prompt_path_save.parent() {
+            let _ = std::fs::create_dir_all(parent_dir);
+        }
+        match std::fs::write(&prompt_path_save, text) {
+            Ok(_) => show_status(&status_save, "Промпт сохранён"),
+            Err(e) => {
+                eprintln!("prompt save error: {e}");
+                show_status(&status_save, "Ошибка сохранения промпта");
+            }
+        }
+        let st = status_save.clone();
+        glib::timeout_add_local_once(std::time::Duration::from_secs(2), move || {
+            hide_status(&st);
+        });
         dialog_save.close();
     });
 

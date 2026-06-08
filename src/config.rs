@@ -280,6 +280,7 @@ pub struct Config {
     pub api_model: String,
     pub post_processing_model: String,
     pub post_processing_style: String,
+    pub post_processing_prompt_path: PathBuf,
     pub db_path: PathBuf,
     pub models_dir: PathBuf,
     pub sound_notification: bool,
@@ -327,6 +328,7 @@ impl Config {
         let data_dir = dirs::data_local_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("whispercrabs");
+        let post_processing_prompt_path = data_dir.join("post_processing_prompt.txt");
         std::fs::create_dir_all(&data_dir).ok();
 
         // Restrict directory permissions on Unix (owner-only: rwx------)
@@ -371,6 +373,7 @@ impl Config {
             api_model,
             post_processing_model,
             post_processing_style,
+            post_processing_prompt_path,
             db_path,
             models_dir,
             sound_notification,

@@ -1,7 +1,7 @@
 use serde_json::json;
 use std::time::Duration;
 
-const SYSTEM_PROMPT_TEMPLATE: &str = "You are an editor of spoken thoughts. Convert the raw voice transcript into clear written text.
+pub const DEFAULT_SYSTEM_PROMPT: &str = "You are an editor of spoken thoughts. Convert the raw voice transcript into clear written text.
 Reply in the SAME language as the input. Preserve meaning exactly; do NOT add facts.
 Remove filler, false starts, repetitions; fix word order and obvious errors.
 Keep all names, numbers and technical terms. If style is '{style}' and it's a task/list,
@@ -13,6 +13,7 @@ pub async fn process(
     api_key: &str,
     model: &str,
     style: &str,
+    prompt_path: &std::path::Path,
     raw: &str,
 ) -> Result<String, String> {
     // Validate URL scheme — reject file://, ftp://, etc.
@@ -30,7 +31,11 @@ pub async fn process(
     }
 
     let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
-    let system_prompt = SYSTEM_PROMPT_TEMPLATE.replace("{style}", style);
+    let template = std::fs::read_to_string(prompt_path)
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT.to_string());
+    let system_prompt = template.replace("{style}", style);
     let body = json!({
         "model": model,
         "temperature": 0.2,
