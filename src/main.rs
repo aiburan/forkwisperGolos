@@ -29,6 +29,7 @@ mod db;
 mod input;
 mod local_stt;
 mod mouse_hotkey;
+mod post_process;
 #[cfg(test)]
 mod tests;
 mod tts;

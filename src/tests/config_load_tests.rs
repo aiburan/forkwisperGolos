@@ -31,3 +31,13 @@ fn config_api_model_is_not_empty() {
     let config = Config::load();
     assert!(!config.api_model.is_empty());
 }
+
+#[test]
+fn config_post_processing_defaults_are_safe() {
+    let config = Config::load();
+    assert!(!config.post_processing);
+    assert_eq!(config.post_processing_base_url, config.api_base_url);
+    assert_eq!(config.post_processing_api_key, config.api_key);
+    assert_eq!(config.post_processing_model, "llama-3.3-70b-versatile");
+    assert_eq!(config.post_processing_style, "structured");
+}

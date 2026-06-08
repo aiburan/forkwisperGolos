@@ -335,7 +335,7 @@ fn toggle_recording(
             let sample_rate = recorder.borrow().sample_rate();
             let auto_paste_target = runtime.borrow_mut().auto_paste_target.take();
 
-            let (tx, rx) = std::sync::mpsc::channel::<Result<String, String>>();
+            let (tx, rx) = std::sync::mpsc::channel::<Result<(String, String), String>>();
 
             let rt = runtime.borrow();
             match rt.active_service {
@@ -343,11 +343,32 @@ fn toggle_recording(
                     let base_url = rt.api_base_url.clone();
                     let api_key = rt.api_key.clone().unwrap_or_default();
                     let model = rt.api_model.clone();
+                    let post_processing = config.post_processing;
+                    let post_processing_base_url = config.post_processing_base_url.clone();
+                    let post_processing_api_key =
+                        config.post_processing_api_key.clone().unwrap_or_default();
+                    let post_processing_model = config.post_processing_model.clone();
+                    let post_processing_style = config.post_processing_style.clone();
                     std::thread::spawn(move || {
                         let rt =
                             tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
-                        let result =
-                            rt.block_on(crate::api::transcribe(&base_url, &api_key, &model, wav));
+                        let result = rt
+                            .block_on(crate::api::transcribe(&base_url, &api_key, &model, wav))
+                            .map(|raw| {
+                                let final_text = if post_processing {
+                                    rt.block_on(crate::post_process::process(
+                                        &post_processing_base_url,
+                                        &post_processing_api_key,
+                                        &post_processing_model,
+                                        &post_processing_style,
+                                        &raw,
+                                    ))
+                                    .unwrap_or_else(|_| raw.clone())
+                                } else {
+                                    raw.clone()
+                                };
+                                (raw, final_text)
+                            });
                         let _ = tx.send(result);
                     });
                 }
@@ -357,7 +378,9 @@ fn toggle_recording(
                         return;
                     };
                     std::thread::spawn(move || {
-                        let result = whisper.transcribe(&wav, sample_rate);
+                        let result = whisper
+                            .transcribe(&wav, sample_rate)
+                            .map(|raw| (raw.clone(), raw));
                         let _ = tx.send(result);
                     });
                 }
@@ -371,13 +394,13 @@ fn toggle_recording(
             let auto_paste_enabled = config.auto_paste_after_transcribe;
             glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
                 match rx.try_recv() {
-                    Ok(Ok(text)) => {
+                    Ok(Ok((raw, final_text))) => {
                         if let Ok(db) = db_inner.lock()
-                            && let Err(e) = db.insert(&text)
+                            && let Err(e) = db.insert(&raw)
                         {
                             eprintln!("DB insert error: {e}");
                         }
-                        match crate::input::copy_to_clipboard(&text) {
+                        match crate::input::copy_to_clipboard(&final_text) {
                             Ok(_) => {
                                 if auto_paste_enabled {
                                     if let Some(target) = auto_paste_target {
