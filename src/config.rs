@@ -278,9 +278,6 @@ pub struct Config {
     pub api_base_url: String,
     pub api_key: Option<String>,
     pub api_model: String,
-    pub post_processing: bool,
-    pub post_processing_base_url: String,
-    pub post_processing_api_key: Option<String>,
     pub post_processing_model: String,
     pub post_processing_style: String,
     pub db_path: PathBuf,
@@ -320,17 +317,6 @@ impl Config {
         let api_model = std::env::var("API_MODEL")
             .or_else(|_| std::env::var("GROQ_STT_MODEL"))
             .unwrap_or_else(|_| "whisper-large-v3-turbo".into());
-
-        let post_processing = std::env::var("TRANSCRIPT_POST_PROCESSING")
-            .map(|v| parse_bool(&v))
-            .unwrap_or(false);
-
-        let post_processing_base_url = std::env::var("POST_PROCESSING_BASE_URL")
-            .unwrap_or_else(|_| api_base_url.clone());
-
-        let post_processing_api_key = std::env::var("POST_PROCESSING_API_KEY")
-            .ok()
-            .or_else(|| api_key.clone());
 
         let post_processing_model = std::env::var("POST_PROCESSING_MODEL")
             .unwrap_or_else(|_| "llama-3.3-70b-versatile".into());
@@ -383,9 +369,6 @@ impl Config {
             api_base_url,
             api_key,
             api_model,
-            post_processing,
-            post_processing_base_url,
-            post_processing_api_key,
             post_processing_model,
             post_processing_style,
             db_path,

@@ -343,10 +343,12 @@ fn toggle_recording(
                     let base_url = rt.api_base_url.clone();
                     let api_key = rt.api_key.clone().unwrap_or_default();
                     let model = rt.api_model.clone();
-                    let post_processing = config.post_processing;
-                    let post_processing_base_url = config.post_processing_base_url.clone();
-                    let post_processing_api_key =
-                        config.post_processing_api_key.clone().unwrap_or_default();
+                    let post_processing = db
+                        .lock()
+                        .ok()
+                        .and_then(|guard| guard.get_setting("post_processing").ok().flatten())
+                        .map(|v| v == "true")
+                        .unwrap_or(false);
                     let post_processing_model = config.post_processing_model.clone();
                     let post_processing_style = config.post_processing_style.clone();
                     std::thread::spawn(move || {
@@ -357,8 +359,8 @@ fn toggle_recording(
                             .map(|raw| {
                                 let final_text = if post_processing {
                                     rt.block_on(crate::post_process::process(
-                                        &post_processing_base_url,
-                                        &post_processing_api_key,
+                                        &base_url,
+                                        &api_key,
                                         &post_processing_model,
                                         &post_processing_style,
                                         &raw,
@@ -809,6 +811,23 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
         &initial_provider.to_variant(),
     );
 
+    let initial_post_processing = if db
+        .lock()
+        .ok()
+        .and_then(|guard| guard.get_setting("post_processing").ok().flatten())
+        .map(|v| v == "true")
+        .unwrap_or(false)
+    {
+        "structured"
+    } else {
+        "raw"
+    };
+    let post_processing_action = gtk4::gio::SimpleAction::new_stateful(
+        "post-processing",
+        Some(&String::static_variant_type()),
+        &initial_post_processing.to_variant(),
+    );
+
     let stt_api_section = gtk4::gio::Menu::new();
     for preset in config::API_PRESETS {
         if preset.id == "groq" {
@@ -829,6 +848,16 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
             Some(&format!("app.transcription-mode::{}", lm.id)),
         );
     }
+
+    let post_processing_section = gtk4::gio::Menu::new();
+    post_processing_section.append(
+        Some("Обычная расшифровка"),
+        Some("app.post-processing::raw"),
+    );
+    post_processing_section.append(
+        Some("Углублённая обработка (ИИ)"),
+        Some("app.post-processing::structured"),
+    );
 
     // TTS actions remain registered, but are not shown in the right-click menu.
     let tts_initial = if initial_tts_provider == TtsProvider::Piper {
@@ -851,6 +880,7 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
     let menu = gtk4::gio::Menu::new();
     menu.append_section(Some("Распознавание — Облако (интернет)"), &stt_api_section);
     menu.append_section(Some("Распознавание — Локально (на устройстве)"), &stt_local_section);
+    menu.append_section(Some("Обработка текста"), &post_processing_section);
     menu.append_section(None, &actions_section);
 
     let popover = gtk4::PopoverMenu::from_model(Some(&menu));
@@ -926,6 +956,24 @@ pub fn build_ui(app: &gtk4::Application, config: Arc<Config>) {
         }
     });
     app.add_action(&mode_action);
+
+    let db_pp = Arc::clone(&db);
+    post_processing_action.connect_activate(move |action, param| {
+        let Some(param) = param else { return };
+        let Some(chosen) = param.get::<String>() else {
+            return;
+        };
+        let enabled = chosen == "structured";
+        if let Ok(db) = db_pp.lock() {
+            if let Err(e) =
+                db.set_setting("post_processing", if enabled { "true" } else { "false" })
+            {
+                eprintln!("DB set_setting error: {e}");
+            }
+        }
+        action.set_state(&chosen.to_variant());
+    });
+    app.add_action(&post_processing_action);
 
     // Action: show history
     let history_action = gtk4::gio::SimpleAction::new("show-history", None);
