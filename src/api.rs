@@ -32,6 +32,13 @@ pub async fn transcribe(
     let form = multipart::Form::new()
         .text("model", model.to_string())
         .text("response_format", "json")
+        .text("language", "ru")
+        .text(
+            "prompt",
+            "Технические термины: сервисы, workflow, commit, deploy, Django, Celery, \
+             pgvector, ЕСЕПШІ, ComfyUI, RTX, инференс, транскрипция, API, GPU, VRAM, \
+             СВ-95, СВ-110, ПК-плиты, БСУ, ГОСТ.",
+        )
         .part("file", file_part);
 
     let client = reqwest::Client::builder()
