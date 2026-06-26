@@ -19,7 +19,7 @@ env:
 jobs:
   windows-build:
     name: Build Windows release zip
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 120
 
     steps:
